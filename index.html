@@ -67,8 +67,12 @@ dialog button.p{background:#8ab4f8;color:#16181d}
 </div>
 
 <dialog id="dlg">
- <h3>Anthropic API key</h3>
- <p>Key sirf is phone ke browser mein save hoti hai aur seedha Anthropic ko jaati hai. Kisi aur server par nahi. console.anthropic.com se banao.</p>
+ <h3>AI key</h3>
+ <select id="prov" style="width:100%;background:#16181d;border:1px solid #444;border-radius:10px;color:#e8eaed;padding:10px;font-size:15px;margin-bottom:10px">
+  <option value="gemini">Gemini (FREE key, bina card)</option>
+  <option value="anthropic">Claude (Anthropic API key)</option>
+ </select>
+ <p id="provHelp"></p>
  <input id="key" type="password" placeholder="sk-ant-..." autocomplete="off">
  <div class="row"><button id="clr">Key hatao</button><button class="p" id="sv">Save</button></div>
 </dialog>
@@ -100,11 +104,16 @@ function setActive(id,mode){Object.values(tiles).forEach(t=>t.classList.remove('
 function caption(who,text,empty){$('capWho').textContent=who||'';const t=$('capTxt');t.textContent=text;t.classList.toggle('empty',!!empty);}
 
 // settings / key
-const getKey=()=>{try{return localStorage.getItem('qs_key')||''}catch(e){return''}};
-$('gear').onclick=()=>$('dlg').showModal();
-$('sv').onclick=()=>{try{localStorage.setItem('qs_key',$('key').value.trim())}catch(e){}$('key').value='';$('dlg').close();note('Key save ho gayi.');};
-$('clr').onclick=()=>{try{localStorage.removeItem('qs_key')}catch(e){}$('dlg').close();note('Key hata di.');};
-if(!getKey())setTimeout(()=>$('dlg').showModal(),400);
+const getProv=()=>{try{return localStorage.getItem('qs_prov')||'gemini'}catch(e){return'gemini'}};
+const getKey=()=>{try{return localStorage.getItem('qs_key_'+getProv())||''}catch(e){return''}};
+function helpText(){const g=$('prov').value==='gemini';
+ $('provHelp').textContent=(g?'aistudio.google.com/apikey par free key banao. ':'console.anthropic.com se key banao. ')+'Key sirf is phone ke browser mein save hoti hai aur seedha provider ko jaati hai.';
+ $('key').placeholder=g?'AIza...':'sk-ant-...';}
+$('prov').onchange=helpText;
+$('gear').onclick=()=>{$('prov').value=getProv();helpText();$('dlg').showModal();};
+$('sv').onclick=()=>{try{localStorage.setItem('qs_prov',$('prov').value);localStorage.setItem('qs_key_'+$('prov').value,$('key').value.trim())}catch(e){}$('key').value='';$('dlg').close();note('Key save ho gayi.');};
+$('clr').onclick=()=>{try{localStorage.removeItem('qs_key_'+$('prov').value)}catch(e){}$('dlg').close();note('Key hata di.');};
+if(!getKey())setTimeout(()=>{$('prov').value=getProv();helpText();$('dlg').showModal();},400);
 
 // camera
 let stream=null;
@@ -146,6 +155,14 @@ $('mic').onclick=()=>{
 const transcript=[];let running=false,stopFlag=false,ctrl=null;
 function buildSystem(p){return p.role+'\n\nContext: 5-minute team video sync. Participants: user (Samipta) aur 4 Claude roles: Strategist, Researcher, Developer, Intern.\nRules: sirf 1-2 chhote sentences (max 35 words). Koi markdown, bullets ya emojis nahi. Call ki bolchal. User ki language mein jawab do (Hinglish ho to Hinglish). Pehle bole points repeat mat karo, apna alag angle do. Sirf apna turn likho, bina naam ya label ke.';}
 async function ask(p){
+ const hist='Meeting abhi tak:\n'+transcript.join('\n')+'\n\nAb Claude ('+p.name+') ka agla turn.';
+ if(getProv()==='gemini'){
+  const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent',{method:'POST',signal:ctrl.signal,
+   headers:{'content-type':'application/json','x-goog-api-key':getKey()},
+   body:JSON.stringify({systemInstruction:{parts:[{text:buildSystem(p)}]},contents:[{role:'user',parts:[{text:hist}]}],generationConfig:{maxOutputTokens:500,temperature:1}})});
+  if(!r.ok){const t=await r.text();throw new Error(r.status+' '+t.slice(0,120));}
+  const j=await r.json();return ((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(c=>c.text||'').join('').trim();
+ }
  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:ctrl.signal,
   headers:{'content-type':'application/json','x-api-key':getKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
   body:JSON.stringify({model:MODEL,max_tokens:160,system:buildSystem(p),messages:[{role:'user',content:'Meeting abhi tak:\n'+transcript.join('\n')+'\n\nAb Claude ('+p.name+') ka agla turn.'}]})});
