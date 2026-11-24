@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#16181d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<title>Quick Sync with Claude</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#16181d;color:#e8eaed;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+body{display:flex;justify-content:center}
+.app{width:100%;max-width:560px;height:100dvh;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top)) 10px calc(8px + env(safe-area-inset-bottom))}
+.top{display:flex;gap:8px;margin-bottom:8px}
+.pill{background:#2b2e35;border-radius:999px;padding:9px 14px;font-size:14px;font-weight:500;display:flex;align-items:center;gap:8px;flex:1}
+.pill .timer{color:#9aa0a6;font-variant-numeric:tabular-nums;margin-left:auto}
+.gear{width:40px;height:40px;border-radius:50%;border:0;background:#2b2e35;color:#e8eaed;font-size:18px}
+.grid{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1.15fr 1fr 1fr;gap:8px}
+.tile{position:relative;background:#2b2e35;border-radius:14px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:2px solid transparent;transition:.15s}
+.tile.me{grid-column:1/3;background:linear-gradient(135deg,#3a3f4b,#262a31)}
+.tile video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:none}
+.tile.speaking{border-color:#8ab4f8;box-shadow:0 0 0 2px rgba(138,180,248,.25)}
+.tile.thinking .name::after{content:" · soch raha hai…";color:#9aa0a6}
+.av{width:30%;max-width:84px;aspect-ratio:1;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center}
+.tile.me .av{background:#c96442;color:#fff;font-size:34px;font-weight:600;width:24%;max-width:96px}
+.av svg{width:62%;height:62%}
+.name{position:absolute;left:10px;bottom:8px;font-size:13px;font-weight:500;text-shadow:0 1px 3px rgba(0,0,0,.7)}
+.wave{position:absolute;right:8px;top:8px;width:26px;height:26px;border-radius:50%;background:#8ab4f8;display:none;align-items:center;justify-content:center;gap:2px}
+.tile.speaking .wave{display:flex}
+.wave i{display:block;width:3px;background:#16181d;border-radius:2px;animation:b .8s infinite ease-in-out}
+.wave i:nth-child(1){height:6px}.wave i:nth-child(2){height:12px;animation-delay:.15s}.wave i:nth-child(3){height:8px;animation-delay:.3s}
+@keyframes b{50%{transform:scaleY(.45)}}
+.cap{margin:8px 0 6px;background:#0c0d10;border-radius:12px;padding:10px 12px;min-height:74px;max-height:128px;overflow:auto}
+.cap .who{font-size:12px;color:#9aa0a6;margin-bottom:3px}
+.cap .txt{font-size:17px;line-height:1.35}.cap .txt.empty{color:#6f747b;font-size:15px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+.chip{flex:none;background:#2b2e35;color:#e8eaed;border:0;border-radius:999px;padding:8px 12px;font-size:13px}
+.bar{display:flex;align-items:center;gap:8px;background:#2b2e35;border-radius:999px;padding:6px 6px 6px 14px}
+.bar input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#e8eaed;font-size:16px;padding:6px 0}
+.ib{width:40px;height:40px;border-radius:50%;border:0;background:#3c4043;color:#e8eaed;display:flex;align-items:center;justify-content:center;flex:none;font-size:18px}
+.ib.send{background:#8ab4f8;color:#16181d}.ib.rec{background:#d93025}.ib.end{background:#d93025;width:54px;border-radius:999px}
+.ib[disabled]{opacity:.45}
+.note{font-size:11.5px;color:#9aa0a6;text-align:center;margin-top:6px;min-height:14px}
+dialog{margin:auto;background:#2b2e35;color:#e8eaed;border:0;border-radius:16px;padding:18px;width:min(92vw,420px)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog h3{margin-bottom:8px;font-size:17px}dialog p{font-size:13px;color:#b5bac1;margin-bottom:10px;line-height:1.4}
+dialog input{width:100%;background:#16181d;border:1px solid #444;border-radius:10px;color:#e8eaed;padding:10px;font-size:15px;margin-bottom:10px}
+dialog .row{display:flex;gap:8px;justify-content:flex-end}
+dialog button{border:0;border-radius:999px;padding:9px 16px;font-size:14px;background:#3c4043;color:#e8eaed}
+dialog button.p{background:#8ab4f8;color:#16181d}
+</style></head>
+<body>
+<div class="app">
+ <div class="top"><div class="pill">📅 Quick sync (5 min)<span class="timer" id="timer">5:00</span></div><button class="gear" id="gear" title="Settings">⚙</button></div>
+ <div class="grid" id="grid"></div>
+ <div class="cap"><div class="who" id="capWho"></div><div class="txt empty" id="capTxt">Neeche kuch likho ya bolo, team jawab degi.</div></div>
+ <div class="chips" id="chips"></div>
+ <div class="bar">
+  <input id="inp" placeholder="Team ko kuch bolo…" autocomplete="off" enterkeyhint="send">
+  <button class="ib" id="cam" title="Camera">📷</button>
+  <button class="ib" id="spk" title="Voice on/off">🔊</button>
+  <button class="ib" id="mic" title="Bolo">🎤</button>
+  <button class="ib send" id="send" title="Send">➤</button>
+  <button class="ib end" id="end" title="End">✕</button>
+ </div>
+ <div class="note" id="note"></div>
+</div>
+
+<dialog id="dlg">
+ <h3>Anthropic API key</h3>
+ <p>Key sirf is phone ke browser mein save hoti hai aur seedha Anthropic ko jaati hai. Kisi aur server par nahi. console.anthropic.com se banao.</p>
+ <input id="key" type="password" placeholder="sk-ant-..." autocomplete="off">
+ <div class="row"><button id="clr">Key hatao</button><button class="p" id="sv">Save</button></div>
+</dialog>
+
+<script>
+const LOGO='<svg viewBox="0 0 24 24"><g stroke="#c96442" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></g></svg>';
+const MODEL='claude-haiku-5-5';
+const PERSONAS=[
+ {id:'strategist',name:'Strategist',pitch:.9,role:'Tum Claude (Strategist) ho. Big picture sochte ho: priorities, trade-offs, next step. Seedhi aur confident baat karte ho.'},
+ {id:'researcher',name:'Researcher',pitch:1.15,role:'Tum Claude (Researcher) ho. Facts, data, examples aur "ye pehle kahan hua hai" pe focus karte ho. Careful aur curious ho.'},
+ {id:'developer',name:'Developer',pitch:.8,role:'Tum Claude (Developer) ho. Practical ho: kaise banega, kitna time, kaunsa tool. Thoda dry humour allowed.'},
+ {id:'intern',name:'Intern',pitch:1.4,role:'Tum Claude (Intern) ho. Bahut excited aur eager, sabse agree karte ho. Hamesha "You\'re absolutely right!" se shuru karo, phir ek chhoti, thodi naive ya funny line jodo.'}
+];
+const $=id=>document.getElementById(id), sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const tiles={};
+(function(){
+ const g=$('grid'),me=document.createElement('div');me.className='tile me';
+ me.innerHTML='<div class="av">S</div><video id="vid" autoplay playsinline muted></video><div class="name">You</div><div class="wave"><i></i><i></i><i></i></div>';
+ g.appendChild(me);tiles.me=me;
+ PERSONAS.forEach(p=>{const d=document.createElement('div');d.className='tile';
+  d.innerHTML='<div class="av">'+LOGO+'</div><div class="name"></div><div class="wave"><i></i><i></i><i></i></div>';
+  d.querySelector('.name').textContent='Claude ('+p.name+')';g.appendChild(d);tiles[p.id]=d;});
+ ['Naye training course ka plan banao','5-min sync ka agenda do','Ek reel idea chahiye','Is week ki priorities?'].forEach(c=>{
+  const b=document.createElement('button');b.className='chip';b.textContent=c;b.onclick=()=>{$('inp').value=c;go();};$('chips').appendChild(b);});
+})();
+let left=300;setInterval(()=>{left=Math.max(0,left-1);$('timer').textContent=Math.floor(left/60)+':'+String(left%60).padStart(2,'0');},1000);
+const note=m=>$('note').textContent=m||'';
+function setActive(id,mode){Object.values(tiles).forEach(t=>t.classList.remove('speaking','thinking'));if(id&&mode)tiles[id].classList.add(mode);}
+function caption(who,text,empty){$('capWho').textContent=who||'';const t=$('capTxt');t.textContent=text;t.classList.toggle('empty',!!empty);}
+
+// settings / key
+const getKey=()=>{try{return localStorage.getItem('qs_key')||''}catch(e){return''}};
+$('gear').onclick=()=>$('dlg').showModal();
+$('sv').onclick=()=>{try{localStorage.setItem('qs_key',$('key').value.trim())}catch(e){}$('key').value='';$('dlg').close();note('Key save ho gayi.');};
+$('clr').onclick=()=>{try{localStorage.removeItem('qs_key')}catch(e){}$('dlg').close();note('Key hata di.');};
+if(!getKey())setTimeout(()=>$('dlg').showModal(),400);
+
+// camera
+let stream=null;
+$('cam').onclick=async()=>{
+ if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;$('vid').style.display='none';$('vid').srcObject=null;return;}
+ try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});$('vid').srcObject=stream;$('vid').style.display='block';}
+ catch(e){note('Camera allow nahi hua.');}
+};
+
+// voice
+let muted=false,voices=[];
+$('spk').onclick=()=>{muted=!muted;$('spk').style.opacity=muted?.4:1;speechSynthesis.cancel();};
+function pickVoice(i){voices=voices.length?voices:speechSynthesis.getVoices();
+ const en=voices.filter(v=>/^(en|hi)[-_]/i.test(v.lang)&&/IN/i.test(v.lang)),pool=en.length?en:voices.filter(v=>/^en/i.test(v.lang));
+ return pool.length?pool[i%pool.length]:null;}
+function prime(){try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u);}catch(e){}}
+async function say(out,p){
+ const wait=()=>sleep(Math.min(6000,1400+out.length*45));
+ if(muted||!window.speechSynthesis){await wait();return;}
+ await new Promise(res=>{try{
+  const u=new SpeechSynthesisUtterance(out),v=pickVoice(PERSONAS.indexOf(p));
+  if(v){u.voice=v;u.lang=v.lang}else u.lang='en-IN';
+  u.pitch=p.pitch;u.rate=1.03;let to;const done=()=>{clearTimeout(to);res()};
+  to=setTimeout(done,Math.min(20000,3000+out.length*90));u.onend=done;u.onerror=done;speechSynthesis.speak(u);
+ }catch(e){res()}});
+}
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let rec=null;
+if(!SR)$('mic').style.display='none';
+$('mic').onclick=()=>{
+ if(rec){try{rec.stop()}catch(e){}return;}
+ try{rec=new SR();rec.lang='en-IN';rec.interimResults=false;
+  rec.onresult=e=>{$('inp').value=(Array.from(e.results).map(r=>r[0].transcript).join(' ')).trim();go();};
+  rec.onend=()=>{rec=null;$('mic').classList.remove('rec')};
+  rec.onerror=ev=>note('Mic error: '+ev.error);rec.start();$('mic').classList.add('rec');
+ }catch(e){note('Mic available nahi hai.');}
+};
+
+// AI
+const transcript=[];let running=false,stopFlag=false,ctrl=null;
+function buildSystem(p){return p.role+'\n\nContext: 5-minute team video sync. Participants: user (Samipta) aur 4 Claude roles: Strategist, Researcher, Developer, Intern.\nRules: sirf 1-2 chhote sentences (max 35 words). Koi markdown, bullets ya emojis nahi. Call ki bolchal. User ki language mein jawab do (Hinglish ho to Hinglish). Pehle bole points repeat mat karo, apna alag angle do. Sirf apna turn likho, bina naam ya label ke.';}
+async function ask(p){
+ const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:ctrl.signal,
+  headers:{'content-type':'application/json','x-api-key':getKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+  body:JSON.stringify({model:MODEL,max_tokens:160,system:buildSystem(p),messages:[{role:'user',content:'Meeting abhi tak:\n'+transcript.join('\n')+'\n\nAb Claude ('+p.name+') ka agla turn.'}]})});
+ if(!r.ok){const t=await r.text();throw new Error(r.status+' '+t.slice(0,120));}
+ const j=await r.json();return (j.content||[]).map(c=>c.text||'').join('').trim();
+}
+async function go(){
+ const text=$('inp').value.trim();if(!text||running)return;
+ if(!getKey()){$('dlg').showModal();return;}
+ $('inp').value='';running=true;stopFlag=false;$('send').disabled=true;note('');prime();
+ transcript.push('Samipta: '+text);setActive('me','speaking');caption('You',text);await sleep(800);
+ try{for(const p of PERSONAS){
+  if(stopFlag)break;setActive(p.id,'thinking');caption('Claude ('+p.name+')','…',true);
+  ctrl=new AbortController();let out='';
+  try{out=await ask(p);}catch(e){if(stopFlag)break;note('Error: '+e.message);break;}
+  out=out||'…';transcript.push('Claude ('+p.name+'): '+out);
+  setActive(p.id,'speaking');caption('Claude ('+p.name+')',out);await say(out,p);
+ }}finally{setActive(null);running=false;$('send').disabled=false;}
+}
+$('send').onclick=go;
+$('inp').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();go();}});
+$('end').onclick=()=>{stopFlag=true;try{ctrl&&ctrl.abort()}catch(e){}try{speechSynthesis.cancel()}catch(e){}
+ transcript.length=0;caption('','Call end. Naya sync shuru karne ke liye kuch bhi likho.',true);setActive(null);left=300;};
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body></html>
